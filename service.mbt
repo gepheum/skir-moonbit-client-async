@@ -100,14 +100,14 @@ pub fn HttpErrorCode::as_int(self : HttpErrorCode) -> Int {
 
 ///|
 pub(all) struct ServiceError {
-  status_code : HttpErrorCode
   message : String
+  status_code : HttpErrorCode?
 }
 
 ///|
 pub fn ServiceError::new(
-  status_code : HttpErrorCode,
   message : String,
+  status_code? : HttpErrorCode? = None,
 ) -> ServiceError {
   { status_code, message }
 }
@@ -116,7 +116,7 @@ pub fn ServiceError::new(
 pub(all) struct MethodErrorInfo[Meta] {
   error_message : String
   method_name : String
-  raw_request : String
+  status_code : StatusCode?
   request_meta : Meta
 }
 
@@ -221,8 +221,8 @@ pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
           return Err(
             Service(
               ServiceError::new(
-                HttpErrorCode::Code_400_BadRequest,
                 "bad request: can't parse JSON: " + e,
+                status_code=Some(HttpErrorCode::Code_400_BadRequest),
               ),
             ),
           )
@@ -474,32 +474,53 @@ async fn[Meta] Service::invoke_entry(
   readable : Bool,
   meta : Meta,
 ) -> RawResponse {
-  let raw_request = request_json
   match (entry.invoke)(request_json, keep_unrecognized, readable, meta) {
     Ok(response_json) => raw_ok_json(response_json)
     Err(err) =>
       match err {
-        Service(service_error) => {
-          let status_code = service_error.status_code.as_int()
-          let msg = if service_error.message == "" {
-            http_status_text(service_error.status_code)
-          } else {
-            service_error.message
+        Service(service_error) =>
+          match service_error.status_code {
+            Some(status_code) => {
+              let msg = if service_error.message == "" {
+                http_status_text(status_code)
+              } else {
+                service_error.message
+              }
+              let info : MethodErrorInfo[Meta] = {
+                error_message: msg,
+                method_name: entry.name,
+                status_code: Some(status_code),
+                request_meta: meta,
+              }
+              (self.error_logger)(info)
+              raw_server_error(msg, status_code.as_int())
+            }
+            None => {
+              let info : MethodErrorInfo[Meta] = {
+                error_message: service_error.message,
+                method_name: entry.name,
+                status_code: None,
+                request_meta: meta,
+              }
+              let can_send = (self.can_send_unknown_error_message)(info)
+              (self.error_logger)(info)
+              let msg = if can_send {
+                if service_error.message == "" {
+                  "server error"
+                } else {
+                  "server error: " + service_error.message
+                }
+              } else {
+                "server error"
+              }
+              raw_server_error(msg, 500)
+            }
           }
-          let info : MethodErrorInfo[Meta] = {
-            error_message: msg,
-            method_name: entry.name,
-            raw_request,
-            request_meta: meta,
-          }
-          (self.error_logger)(info)
-          raw_server_error(msg, status_code)
-        }
         Unknown(message) => {
           let info : MethodErrorInfo[Meta] = {
             error_message: message,
             method_name: entry.name,
-            raw_request,
+            status_code: None,
             request_meta: meta,
           }
           let can_send = (self.can_send_unknown_error_message)(info)
