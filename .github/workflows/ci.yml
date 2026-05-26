@@ -23,27 +23,38 @@ jobs:
       - name: Show toolchain version
         run: moon version
 
-      - name: Bootstrap dependencies for CI
+      - name: Bootstrap local module dependencies
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .mooncakes/gepheum .mooncakes/moonbitlang
+          mkdir -p deps
 
-          # `gepheum/skir-client` is not always available in the registry yet.
-          if [ ! -d .mooncakes/gepheum/skir-client ]; then
-            git clone --depth 1 https://github.com/gepheum/skir-moonbit-client .mooncakes/gepheum/skir-client
+          # `gepheum/skir-client` and `moonbitlang/async` may not be published
+          # to the registry when this workflow runs.
+          if [ ! -d deps/skir-client ]; then
+            git clone --depth 1 https://github.com/gepheum/skir-moonbit-client deps/skir-client
           fi
 
-          # Keep async available even if registry resolution is flaky.
-          if [ ! -d .mooncakes/moonbitlang/async ]; then
-            git clone --depth 1 https://github.com/moonbitlang/async .mooncakes/moonbitlang/async
+          if [ ! -d deps/async ]; then
+            git clone --depth 1 https://github.com/moonbitlang/async deps/async
           fi
+
+          cat > moon.work <<'EOF'
+          members = [
+            ".",
+            "deps/skir-client",
+            "deps/async",
+          ]
+          EOF
+
+      - name: Show workspace members
+        run: cat moon.work
 
       - name: Check formatting
-        run: moon fmt --check
+        run: moon fmt --check .
 
       - name: Typecheck
-        run: moon check
+        run: moon check .
 
       - name: Run tests
-        run: moon test
+        run: moon test .
