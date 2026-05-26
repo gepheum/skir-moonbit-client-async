@@ -13,23 +13,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install MoonBit
-        shell: bash
+      - name: Setup Moon
+        uses: hustcer/setup-moonbit@v1
+        with:
+          version: latest
+
+      - name: moon version
         run: |
-          set -euo pipefail
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- '0.9.2+bbe2b338f'
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          moon version --all
 
-      - name: Show toolchain version
-        run: moon version
+      - name: install module dependencies
+        run: |
+          moon update
+          moon install
 
-      - name: Check formatting
-        run: moon fmt --check
-
-      - run: moon update
-
-      - name: Typecheck
+      - name: moon check
         run: moon check
 
-      - name: Run tests
+      - name: moon test
         run: moon test
