@@ -23,9 +23,7 @@ moon whoami
 From this directory:
 
 ```bash
-moon fmt --check
-moon check
-moon test
+./pre_commit.sh
 moon package
 ```
 

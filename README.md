@@ -13,9 +13,7 @@ moon add gepheum/skir-client-async
 ## Development
 
 ```bash
-moon fmt --check
-moon check
-moon test
+./pre_commit.sh
 ```
 
 ## License
