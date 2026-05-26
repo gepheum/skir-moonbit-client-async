@@ -3,20 +3,17 @@
 async fn main {
   let users = @hashmap.HashMap([], capacity=8)
 
-  let builder = match
-    @client_async.ServiceBuilder::new().add_method(
-      @skirout_service_skir.get_user_method,
-      (req, _meta) => {
-        let user = users.get(req.user_id)
-        Ok(@skirout_service_skir.GetUserResponse::new(user~))
-      },
-    ) {
-    Ok(builder) => builder
-    Err(_) => panic()
-  }
+  let get_user = @client_async.MethodEntry::new(
+    @skirout_service_skir.get_user_method,
+    (req, _meta) => {
+      let user = users.get(req.user_id)
+      Ok(@skirout_service_skir.GetUserResponse::new(user~))
+    },
+  )
 
-  let service = match
-    builder.add_method(@skirout_service_skir.add_user_method, (req, _meta) => {
+  let add_user = @client_async.MethodEntry::new(
+    @skirout_service_skir.add_user_method,
+    (req, _meta) => {
       if req.user.user_id == 0 {
         Err(
           @client_async.ServiceError::new(
@@ -28,8 +25,11 @@ async fn main {
         users.set(req.user.user_id, req.user)
         Ok(@skirout_service_skir.AddUserResponse::new())
       }
-    }) {
-    Ok(builder) => builder.build()
+    },
+  )
+
+  let service = match @client_async.Service::new([get_user, add_user]) {
+    Ok(service) => service
     Err(_) => panic()
   }
 

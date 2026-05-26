@@ -121,23 +121,13 @@ pub(all) struct MethodErrorInfo[Meta] {
 }
 
 ///|
-struct MethodEntry[Meta] {
-  name : String
-  number : Int
-  doc : String
-  request_type_descriptor_json : Json
-  response_type_descriptor_json : Json
-  invoke : async (String, Bool, Bool, Meta) -> Result[String, ServiceError]
-}
-
-///|
 pub struct Service[Meta] {
-  keep_unrecognized_values : Bool
-  can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
-  error_logger : (MethodErrorInfo[Meta]) -> Unit
-  studio_app_js_url : String
-  by_num : @hashmap.HashMap[Int, MethodEntry[Meta]]
-  by_name : @hashmap.HashMap[String, Int]
+  priv keep_unrecognized_values : Bool
+  priv can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
+  priv error_logger : (MethodErrorInfo[Meta]) -> Unit
+  priv studio_app_js_url : String
+  priv by_num : @hashmap.HashMap[Int, MethodEntry[Meta]]
+  priv by_name : @hashmap.HashMap[String, Int]
 }
 
 ///|
@@ -163,60 +153,28 @@ pub async fn[Meta] Service::handle_request(
 }
 
 ///|
-pub struct ServiceBuilder[Meta] {
-  keep_unrecognized_values : Bool
-  can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
-  error_logger : (MethodErrorInfo[Meta]) -> Unit
-  studio_app_js_url : String
-  by_num : @hashmap.HashMap[Int, MethodEntry[Meta]]
-  by_name : @hashmap.HashMap[String, Int]
+pub struct MethodEntry[Meta] {
+  priv name : String
+  priv number : Int
+  priv doc : String
+  priv request_type_descriptor_json : Json
+  priv response_type_descriptor_json : Json
+  priv invoke : async (String, Bool, Bool, Meta) -> Result[String, ServiceError]
 }
 
 ///|
-pub fn[Meta] ServiceBuilder::new() -> ServiceBuilder[Meta] {
-  {
-    keep_unrecognized_values: false,
-    can_send_unknown_error_message: _ => false,
-    error_logger: info => {
-      println(
-        "skir: error in method \"" +
-        info.method_name +
-        "\": " +
-        info.error_message,
-      )
-    },
-    studio_app_js_url: DEFAULT_STUDIO_APP_JS_URL,
-    by_num: @hashmap.HashMap([], capacity=16),
-    by_name: @hashmap.HashMap([], capacity=16),
-  }
-}
-
-///|
-pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
-  self : ServiceBuilder[Meta],
+pub fn[Req, Resp, Meta] MethodEntry::new(
   rpc_method : @client.Method[Req, Resp],
   impl_fn : async (Req, Meta) -> Result[Resp, ServiceError],
-) -> Result[ServiceBuilder[Meta], String] {
-  if self.by_num.contains(rpc_method.number) {
-    return Err(
-      "skir: method number " +
-      rpc_method.number.to_string() +
-      " already registered",
-    )
-  }
-
+) -> MethodEntry[Meta] {
   let req_serializer = rpc_method.request_serializer
   let resp_serializer = rpc_method.response_serializer
-  let entry : MethodEntry[Meta] = {
+  {
     name: rpc_method.name,
     number: rpc_method.number,
     doc: rpc_method.doc,
-    request_type_descriptor_json: rpc_method.request_serializer
-    .type_descriptor()
-    .as_json(),
-    response_type_descriptor_json: rpc_method.response_serializer
-    .type_descriptor()
-    .as_json(),
+    request_type_descriptor_json: req_serializer.type_descriptor().as_json(),
+    response_type_descriptor_json: resp_serializer.type_descriptor().as_json(),
     invoke: (request_json, keep_unrecognized, readable, meta) => {
       let policy = if keep_unrecognized {
         @client.UnrecognizedValues::Keep
@@ -249,65 +207,45 @@ pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
       }
     },
   }
-
-  let next = self
-  next.by_name.set(rpc_method.name, rpc_method.number)
-  next.by_num.set(rpc_method.number, entry)
-  Ok(next)
 }
 
 ///|
-pub fn[Meta] ServiceBuilder::set_keep_unrecognized_values(
-  self : ServiceBuilder[Meta],
-  keep : Bool,
-) -> ServiceBuilder[Meta] {
-  { ..self, keep_unrecognized_values: keep }
-}
-
-///|
-pub fn[Meta] ServiceBuilder::set_can_send_unknown_error_message(
-  self : ServiceBuilder[Meta],
-  can : Bool,
-) -> ServiceBuilder[Meta] {
-  { ..self, can_send_unknown_error_message: _ => can }
-}
-
-///|
-pub fn[Meta] ServiceBuilder::set_can_send_unknown_error_message_fn(
-  self : ServiceBuilder[Meta],
-  f : (MethodErrorInfo[Meta]) -> Bool,
-) -> ServiceBuilder[Meta] {
-  { ..self, can_send_unknown_error_message: f }
-}
-
-///|
-pub fn[Meta] ServiceBuilder::set_error_logger(
-  self : ServiceBuilder[Meta],
-  logger : (MethodErrorInfo[Meta]) -> Unit,
-) -> ServiceBuilder[Meta] {
-  { ..self, error_logger: logger }
-}
-
-///|
-pub fn[Meta] ServiceBuilder::set_studio_app_js_url(
-  self : ServiceBuilder[Meta],
-  url : String,
-) -> ServiceBuilder[Meta] {
-  { ..self, studio_app_js_url: url }
-}
-
-///|
-pub fn[Meta] ServiceBuilder::build(
-  self : ServiceBuilder[Meta],
-) -> Service[Meta] {
-  {
-    keep_unrecognized_values: self.keep_unrecognized_values,
-    can_send_unknown_error_message: self.can_send_unknown_error_message,
-    error_logger: self.error_logger,
-    studio_app_js_url: self.studio_app_js_url,
-    by_num: self.by_num,
-    by_name: self.by_name,
+pub fn[Meta] Service::new(
+  methods : Array[MethodEntry[Meta]],
+  keep_unrecognized_values? : Bool = false,
+  can_send_unknown_error_message? : (MethodErrorInfo[Meta]) -> Bool = _ => false,
+  error_logger? : (MethodErrorInfo[Meta]) -> Unit = info => {
+    println(
+      "skir: error in method \"" +
+      info.method_name +
+      "\": " +
+      info.error_message,
+    )
+  },
+  studio_app_js_url? : String = DEFAULT_STUDIO_APP_JS_URL,
+) -> Result[Service[Meta], String] {
+  let by_num = @hashmap.HashMap([], capacity=methods.length())
+  let by_name = @hashmap.HashMap([], capacity=methods.length())
+  for _, entry in methods {
+    if by_num.contains(entry.number) {
+      return Err(
+        "skir: method number " +
+        entry.number.to_string() +
+        " already registered",
+      )
+    }
+    by_name.set(entry.name, entry.number)
+    by_num.set(entry.number, entry)
   }
+
+  Ok({
+    keep_unrecognized_values,
+    can_send_unknown_error_message,
+    error_logger,
+    studio_app_js_url,
+    by_num,
+    by_name,
+  })
 }
 
 ///|
@@ -444,12 +382,11 @@ async fn[Meta] Service::handle_colon_request(
     }
   }
 
-  let readable = format == "readable"
   self.invoke_entry(
     entry,
     request_json,
     self.keep_unrecognized_values,
-    readable,
+    format == "readable",
     meta,
   )
 }
