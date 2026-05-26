@@ -48,6 +48,7 @@ async fn main {
   })
 }
 
+///|
 fn extract_query_body(path : String) -> String {
   let i = match path.find("?") {
     Some(v) => v
@@ -57,6 +58,7 @@ fn extract_query_body(path : String) -> String {
   percent_decode(raw)
 }
 
+///|
 fn percent_decode(input : StringView) -> String {
   let bytes = @utf8.encode(input.to_owned())
   let out : Array[Byte] = []
@@ -87,6 +89,7 @@ fn percent_decode(input : StringView) -> String {
   }
 }
 
+///|
 fn hex_value(b : Byte) -> Int? {
   if b >= b'0' && b <= b'9' {
     Some((b - b'0').to_int())

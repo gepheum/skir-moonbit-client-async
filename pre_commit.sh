@@ -4,6 +4,6 @@ set -euo pipefail
 
 echo "Running MoonBit pre-commit checks..."
 
-moon fmt --check
+moon fmt
 moon check
 moon test
