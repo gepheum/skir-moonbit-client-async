@@ -1,4 +1,7 @@
 ///|
+/// Raw HTTP-like response returned by the service runtime.
+///
+/// This is primarily produced by `Service::handle_request`.
 pub(all) struct RawResponse {
   data : String
   status_code : Int
@@ -6,6 +9,10 @@ pub(all) struct RawResponse {
 }
 
 ///|
+/// HTTP status codes used by service-side errors.
+///
+/// The constructors mirror common 4xx/5xx responses and can be converted
+/// to integers via `HttpErrorCode::as_int`.
 pub(all) enum HttpErrorCode {
   Code_400_BadRequest
   Code_401_Unauthorized
@@ -50,9 +57,7 @@ pub(all) enum HttpErrorCode {
 } derive(Eq, Hash, Debug)
 
 ///|
-pub type StatusCode = HttpErrorCode
-
-///|
+/// Converts a status enum value to its integer HTTP code.
 pub fn HttpErrorCode::as_int(self : HttpErrorCode) -> Int {
   match self {
     Code_400_BadRequest => 400
@@ -99,12 +104,20 @@ pub fn HttpErrorCode::as_int(self : HttpErrorCode) -> Int {
 }
 
 ///|
+/// Error returned by method implementations.
+///
+/// - `message` is logged and may be returned to clients depending on policy.
+/// - `status_code` when present drives the HTTP response code.
 pub(all) struct ServiceError {
   message : String
   status_code : HttpErrorCode?
 }
 
 ///|
+/// Builds a `ServiceError`.
+///
+/// Example:
+/// `ServiceError::new("user_id must be non-zero", status_code=Some(HttpErrorCode::Code_400_BadRequest))`
 pub fn ServiceError::new(
   message : String,
   status_code? : HttpErrorCode? = None,
@@ -113,14 +126,19 @@ pub fn ServiceError::new(
 }
 
 ///|
+/// Context passed to error hooks configured in `Service::new`.
 pub(all) struct MethodErrorInfo[Meta] {
   error_message : String
   method_name : String
-  status_code : StatusCode?
+  status_code : HttpErrorCode?
   request_meta : Meta
 }
 
 ///|
+/// Immutable RPC service runtime.
+///
+/// Create with `Service::new`, then call `handle_request` for each incoming
+/// request payload.
 pub struct Service[Meta] {
   priv keep_unrecognized_values : Bool
   priv can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
@@ -131,6 +149,21 @@ pub struct Service[Meta] {
 }
 
 ///|
+/// Handles a single incoming request body and returns a raw response.
+///
+/// The `body` parameter must match the HTTP method exactly:
+/// - for POST requests, pass the raw HTTP request body text;
+/// - for GET requests, pass the percent-decoded query fragment.
+///
+/// For GET requests, obtain this value with
+/// `get_percent_decoded_query_from_url(request.path)`.
+///
+/// Example from e2e (`start_service.mbt`):
+/// `let body_text = match request.meth {`
+/// `  Get => @client_async.get_percent_decoded_query_from_url(request.path)`
+/// `  _ => body.read_all().text()`
+/// `}`
+/// `let response = service.handle_request(body_text, ())`
 pub async fn[Meta] Service::handle_request(
   self : Service[Meta],
   body : String,
@@ -153,6 +186,9 @@ pub async fn[Meta] Service::handle_request(
 }
 
 ///|
+/// Precompiled method entry consumed by `Service::new`.
+///
+/// Entries are created through `MethodEntry::new`.
 pub struct MethodEntry[Meta] {
   priv name : String
   priv number : Int
@@ -163,6 +199,10 @@ pub struct MethodEntry[Meta] {
 }
 
 ///|
+/// Creates a method entry from generated method metadata and an implementation.
+///
+/// Example from e2e:
+/// `let get_user = @client_async.MethodEntry::new(@skirout_service_skir.get_user_method, (req, _meta) => { ... })`
 pub fn[Req, Resp, Meta] MethodEntry::new(
   rpc_method : @client.Method[Req, Resp],
   impl_fn : async (Req, Meta) -> Result[Resp, ServiceError],
@@ -210,6 +250,21 @@ pub fn[Req, Resp, Meta] MethodEntry::new(
 }
 
 ///|
+/// Builds a `Service` from method entries and runtime hooks.
+///
+/// Parameters:
+/// - `methods`: registered RPC methods (required).
+/// - `keep_unrecognized_values`: controls whether unknown fields are preserved
+///   during request decoding (default: `false`).
+/// - `can_send_unknown_error_message`: decides whether unknown/internal error
+///   details can be sent back to clients (default: `_ => false`).
+/// - `error_logger`: receives method error context for logging/observability
+///   (default: prints `method_name` + `error_message`).
+/// - `studio_app_js_url`: JS bundle URL used by the built-in `"studio"`
+///   endpoint (default: Skir CDN standalone URL).
+///
+/// Example from e2e:
+/// `@client_async.Service::new([get_user, add_user], keep_unrecognized_values=true)`
 pub fn[Meta] Service::new(
   methods : Array[MethodEntry[Meta]],
   keep_unrecognized_values? : Bool = false,
@@ -489,6 +544,12 @@ fn html_escape_attr(s : String) -> String {
 }
 
 ///|
+/// Extracts the query section from a URL path and percent-decodes it.
+///
+/// Returns `""` if the URL has no `?query` section.
+///
+/// Example from e2e:
+/// `Get => @client_async.get_percent_decoded_query_from_url(request.path)`
 pub fn get_percent_decoded_query_from_url(path : String) -> String {
   let i = match path.find("?") {
     Some(v) => v
@@ -543,7 +604,7 @@ fn hex_value(b : Byte) -> Int? {
 }
 
 ///|
-fn http_status_text(code : StatusCode) -> String {
+fn http_status_text(code : HttpErrorCode) -> String {
   match code {
     Code_400_BadRequest => "Bad Request"
     Code_401_Unauthorized => "Unauthorized"

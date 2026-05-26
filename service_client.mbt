@@ -1,16 +1,29 @@
 ///|
+/// Error returned by the RPC client.
+///
+/// `status_code=0` represents transport/decoding failures.
 pub(all) struct RpcError {
   status_code : Int
   message : String
 }
 
 ///|
+/// Client for invoking methods on a remote Skir service endpoint.
+///
+/// Construct with `ServiceClient::new` and call `invoke_remote`.
 pub struct ServiceClient {
   priv service_url : String
   priv default_headers : @hashmap.HashMap[String, String]
 }
 
 ///|
+/// Creates a service client.
+///
+/// - `default_headers` is copied so later caller mutations do not affect
+///   the client.
+///
+/// Example from e2e:
+/// `let client = @client_async.ServiceClient::new("http://localhost:8787/myapi")`
 pub fn ServiceClient::new(
   service_url : String,
   default_headers? : @hashmap.HashMap[String, String] = @hashmap.HashMap([]),
@@ -24,6 +37,12 @@ pub fn ServiceClient::new(
 }
 
 ///|
+/// Invokes a remote method and decodes the typed response.
+///
+/// `extra_headers` are merged on top of `default_headers` for this call.
+///
+/// Example from e2e:
+/// `client.invoke_remote(@skirout_service_skir.get_user_method, get_req, [])`
 pub async fn[Req, Resp] ServiceClient::invoke_remote(
   self : ServiceClient,
   rpc_method : @client.Method[Req, Resp],
