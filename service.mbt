@@ -121,6 +121,16 @@ pub(all) struct MethodErrorInfo[Meta] {
 }
 
 ///|
+struct MethodEntry[Meta] {
+  name : String
+  number : Int
+  doc : String
+  request_type_descriptor_json : Json
+  response_type_descriptor_json : Json
+  invoke : async (String, Bool, Bool, Meta) -> Result[String, ServiceError]
+}
+
+///|
 pub struct Service[Meta] {
   keep_unrecognized_values : Bool
   can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
@@ -219,11 +229,9 @@ pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
         Ok(v) => v
         Err(e) =>
           return Err(
-            Service(
-              ServiceError::new(
-                "bad request: can't parse JSON: " + e,
-                status_code=Some(HttpErrorCode::Code_400_BadRequest),
-              ),
+            ServiceError::new(
+              "bad request: can't parse JSON: " + e,
+              status_code=Some(HttpErrorCode::Code_400_BadRequest),
             ),
           )
       }
@@ -237,7 +245,7 @@ pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
           }
           Ok(response_json)
         }
-        Err(service_err) => Err(Service(service_err))
+        Err(service_err) => Err(service_err)
       }
     },
   }
@@ -300,25 +308,6 @@ pub fn[Meta] ServiceBuilder::build(
     by_num: self.by_num,
     by_name: self.by_name,
   }
-}
-
-///|
-enum MethodInvocationError {
-  Service(ServiceError)
-  Unknown(String)
-}
-
-///|
-struct MethodEntry[Meta] {
-  name : String
-  number : Int
-  doc : String
-  request_type_descriptor_json : Json
-  response_type_descriptor_json : Json
-  invoke : async (String, Bool, Bool, Meta) -> Result[
-    String,
-    MethodInvocationError,
-  ]
 }
 
 ///|
@@ -476,49 +465,26 @@ async fn[Meta] Service::invoke_entry(
 ) -> RawResponse {
   match (entry.invoke)(request_json, keep_unrecognized, readable, meta) {
     Ok(response_json) => raw_ok_json(response_json)
-    Err(err) =>
-      match err {
-        Service(service_error) =>
-          match service_error.status_code {
-            Some(status_code) => {
-              let msg = if service_error.message == "" {
-                http_status_text(status_code)
-              } else {
-                service_error.message
-              }
-              let info : MethodErrorInfo[Meta] = {
-                error_message: msg,
-                method_name: entry.name,
-                status_code: Some(status_code),
-                request_meta: meta,
-              }
-              (self.error_logger)(info)
-              raw_server_error(msg, status_code.as_int())
-            }
-            None => {
-              let info : MethodErrorInfo[Meta] = {
-                error_message: service_error.message,
-                method_name: entry.name,
-                status_code: None,
-                request_meta: meta,
-              }
-              let can_send = (self.can_send_unknown_error_message)(info)
-              (self.error_logger)(info)
-              let msg = if can_send {
-                if service_error.message == "" {
-                  "server error"
-                } else {
-                  "server error: " + service_error.message
-                }
-              } else {
-                "server error"
-              }
-              raw_server_error(msg, 500)
-            }
+    Err(service_error) =>
+      match service_error.status_code {
+        Some(status_code) => {
+          let msg = if service_error.message == "" {
+            http_status_text(status_code)
+          } else {
+            service_error.message
           }
-        Unknown(message) => {
           let info : MethodErrorInfo[Meta] = {
-            error_message: message,
+            error_message: msg,
+            method_name: entry.name,
+            status_code: Some(status_code),
+            request_meta: meta,
+          }
+          (self.error_logger)(info)
+          raw_server_error(msg, status_code.as_int())
+        }
+        None => {
+          let info : MethodErrorInfo[Meta] = {
+            error_message: service_error.message,
             method_name: entry.name,
             status_code: None,
             request_meta: meta,
@@ -526,7 +492,11 @@ async fn[Meta] Service::invoke_entry(
           let can_send = (self.can_send_unknown_error_message)(info)
           (self.error_logger)(info)
           let msg = if can_send {
-            "server error: " + message
+            if service_error.message == "" {
+              "server error"
+            } else {
+              "server error: " + service_error.message
+            }
           } else {
             "server error"
           }
