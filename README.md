@@ -2,7 +2,7 @@
 
 Async MoonBit runtime for SkirRPC `Service` and `ServiceClient`.
 
-https://skir.build/docs/skirrpc
+Website: https://skir.build/docs/skirrpc
 
 ## Install
 
