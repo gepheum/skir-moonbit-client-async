@@ -1,10 +1,66 @@
 ///|
+/// Immutable RPC service runtime.
+///
+/// Create with `Service::new`, then call `handle_request` for each incoming
+/// request payload.
+pub struct Service[Meta] {
+  priv unrecognized_values : @client.UnrecognizedValues
+  priv can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
+  priv error_logger : (MethodErrorInfo[Meta]) -> Unit
+  priv studio_app_js_url : String
+  priv by_num : @hashmap.HashMap[Int, MethodEntry[Meta]]
+  priv by_name : @hashmap.HashMap[String, Int]
+}
+
+///|
+/// Handles a single incoming request body and returns a raw response.
+///
+/// The `body` parameter must match the HTTP method exactly:
+/// - for POST requests, pass the raw HTTP request body text;
+/// - for GET requests, pass the percent-decoded query fragment.
+///
+/// For GET requests, obtain this value with
+/// `get_percent_decoded_query_from_url(request.path)`.
+///
+/// Example from e2e (`start_service.mbt`):
+/// `let body_text = match request.meth {`
+/// `  Get => @client_async.get_percent_decoded_query_from_url(request.path)`
+/// `  _ => body.read_all().text()`
+/// `}`
+/// `let response = service.handle_request(body_text, ())`
+/// `conn.send_response(response.status_code, response.status_text, extra_headers={`
+/// `  "Content-Type": response.content_type,`
+/// `})`
+/// `conn.write_string(response.data)`
+pub async fn[Meta] Service::handle_request(
+  self : Service[Meta],
+  body : String,
+  meta : Meta,
+) -> RawResponse {
+  match body {
+    "" | "studio" => return serve_studio(self.studio_app_js_url)
+    "list" => return self.serve_list()
+    _ => ()
+  }
+
+  if body.has_prefix("{") ||
+    body.has_prefix(" ") ||
+    body.has_prefix("\n") ||
+    body.has_prefix("\t") {
+    self.handle_json_request(body, meta)
+  } else {
+    self.handle_colon_request(body, meta)
+  }
+}
+
+///|
 /// Raw HTTP-like response returned by the service runtime.
 ///
 /// This is primarily produced by `Service::handle_request`.
 pub(all) struct RawResponse {
   data : String
   status_code : Int
+  status_text : String
   content_type : String
 }
 
@@ -135,57 +191,6 @@ pub(all) struct MethodErrorInfo[Meta] {
 }
 
 ///|
-/// Immutable RPC service runtime.
-///
-/// Create with `Service::new`, then call `handle_request` for each incoming
-/// request payload.
-pub struct Service[Meta] {
-  priv keep_unrecognized_values : Bool
-  priv can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
-  priv error_logger : (MethodErrorInfo[Meta]) -> Unit
-  priv studio_app_js_url : String
-  priv by_num : @hashmap.HashMap[Int, MethodEntry[Meta]]
-  priv by_name : @hashmap.HashMap[String, Int]
-}
-
-///|
-/// Handles a single incoming request body and returns a raw response.
-///
-/// The `body` parameter must match the HTTP method exactly:
-/// - for POST requests, pass the raw HTTP request body text;
-/// - for GET requests, pass the percent-decoded query fragment.
-///
-/// For GET requests, obtain this value with
-/// `get_percent_decoded_query_from_url(request.path)`.
-///
-/// Example from e2e (`start_service.mbt`):
-/// `let body_text = match request.meth {`
-/// `  Get => @client_async.get_percent_decoded_query_from_url(request.path)`
-/// `  _ => body.read_all().text()`
-/// `}`
-/// `let response = service.handle_request(body_text, ())`
-pub async fn[Meta] Service::handle_request(
-  self : Service[Meta],
-  body : String,
-  meta : Meta,
-) -> RawResponse {
-  match body {
-    "" | "studio" => return serve_studio(self.studio_app_js_url)
-    "list" => return self.serve_list()
-    _ => ()
-  }
-
-  if body.has_prefix("{") ||
-    body.has_prefix(" ") ||
-    body.has_prefix("\n") ||
-    body.has_prefix("\t") {
-    self.handle_json_request(body, meta)
-  } else {
-    self.handle_colon_request(body, meta)
-  }
-}
-
-///|
 /// Precompiled method entry consumed by `Service::new`.
 ///
 /// Entries are created through `MethodEntry::new`.
@@ -195,7 +200,10 @@ pub struct MethodEntry[Meta] {
   priv doc : String
   priv request_type_descriptor_json : Json
   priv response_type_descriptor_json : Json
-  priv invoke : async (String, Bool, Bool, Meta) -> Result[String, ServiceError]
+  priv invoke : async (String, @client.UnrecognizedValues, Bool, Meta) -> Result[
+    String,
+    ServiceError,
+  ]
 }
 
 ///|
@@ -215,15 +223,9 @@ pub fn[Req, Resp, Meta] MethodEntry::new(
     doc: rpc_method.doc,
     request_type_descriptor_json: req_serializer.type_descriptor().as_json(),
     response_type_descriptor_json: resp_serializer.type_descriptor().as_json(),
-    invoke: (request_json, keep_unrecognized, readable, meta) => {
-      let policy = if keep_unrecognized {
-        @client.UnrecognizedValues::Keep
-      } else {
-        @client.UnrecognizedValues::Drop
-      }
-
+    invoke: (request_json, unrecognized_values, readable, meta) => {
       let req = match
-        req_serializer.from_json_code(request_json, unrecognized_values=policy) {
+        req_serializer.from_json_code(request_json, unrecognized_values~) {
         Ok(v) => v
         Err(e) =>
           return Err(
@@ -254,8 +256,8 @@ pub fn[Req, Resp, Meta] MethodEntry::new(
 ///
 /// Parameters:
 /// - `methods`: registered RPC methods (required).
-/// - `keep_unrecognized_values`: controls whether unknown fields are preserved
-///   during request decoding (default: `false`).
+/// - `unrecognized_values`: controls whether unknown fields are preserved or
+///   dropped during request decoding (default: `Drop`).
 /// - `can_send_unknown_error_message`: decides whether unknown/internal error
 ///   details can be sent back to clients (default: `_ => false`).
 /// - `error_logger`: receives method error context for logging/observability
@@ -264,10 +266,10 @@ pub fn[Req, Resp, Meta] MethodEntry::new(
 ///   endpoint (default: Skir CDN standalone URL).
 ///
 /// Example from e2e:
-/// `@client_async.Service::new([get_user, add_user], keep_unrecognized_values=true)`
+/// `@client_async.Service::new([get_user, add_user], unrecognized_values=@client.UnrecognizedValues::Keep)`
 pub fn[Meta] Service::new(
   methods : Array[MethodEntry[Meta]],
-  keep_unrecognized_values? : Bool = false,
+  unrecognized_values? : @client.UnrecognizedValues = @client.UnrecognizedValues::Drop,
   can_send_unknown_error_message? : (MethodErrorInfo[Meta]) -> Bool = _ => false,
   error_logger? : (MethodErrorInfo[Meta]) -> Unit = info => {
     println(
@@ -294,7 +296,7 @@ pub fn[Meta] Service::new(
   }
 
   Ok({
-    keep_unrecognized_values,
+    unrecognized_values,
     can_send_unknown_error_message,
     error_logger,
     studio_app_js_url,
@@ -376,7 +378,7 @@ async fn[Meta] Service::handle_json_request(
   self.invoke_entry(
     entry,
     request_val.stringify(),
-    self.keep_unrecognized_values,
+    self.unrecognized_values,
     true,
     meta,
   )
@@ -440,7 +442,7 @@ async fn[Meta] Service::handle_colon_request(
   self.invoke_entry(
     entry,
     request_json,
-    self.keep_unrecognized_values,
+    self.unrecognized_values,
     format == "readable",
     meta,
   )
@@ -451,11 +453,11 @@ async fn[Meta] Service::invoke_entry(
   self : Service[Meta],
   entry : MethodEntry[Meta],
   request_json : String,
-  keep_unrecognized : Bool,
+  unrecognized_values : @client.UnrecognizedValues,
   readable : Bool,
   meta : Meta,
 ) -> RawResponse {
-  match (entry.invoke)(request_json, keep_unrecognized, readable, meta) {
+  match (entry.invoke)(request_json, unrecognized_values, readable, meta) {
     Ok(response_json) => raw_ok_json(response_json)
     Err(service_error) =>
       match service_error.status_code {
@@ -472,7 +474,7 @@ async fn[Meta] Service::invoke_entry(
             request_meta: meta,
           }
           (self.error_logger)(info)
-          raw_server_error(msg, status_code.as_int())
+          raw_server_error(msg, status_code)
         }
         None => {
           let info : MethodErrorInfo[Meta] = {
@@ -492,7 +494,7 @@ async fn[Meta] Service::invoke_entry(
           } else {
             "server error"
           }
-          raw_server_error(msg, 500)
+          raw_server_error(msg, HttpErrorCode::Code_500_InternalServerError)
         }
       }
   }
@@ -500,22 +502,42 @@ async fn[Meta] Service::invoke_entry(
 
 ///|
 fn raw_ok_json(data : String) -> RawResponse {
-  { data, status_code: 200, content_type: "application/json" }
+  {
+    data,
+    status_code: 200,
+    status_text: "OK",
+    content_type: "application/json",
+  }
 }
 
 ///|
 fn raw_ok_html(data : String) -> RawResponse {
-  { data, status_code: 200, content_type: "text/html; charset=utf-8" }
+  {
+    data,
+    status_code: 200,
+    status_text: "OK",
+    content_type: "text/html; charset=utf-8",
+  }
 }
 
 ///|
 fn raw_bad_request(msg : String) -> RawResponse {
-  { data: msg, status_code: 400, content_type: "text/plain; charset=utf-8" }
+  {
+    data: msg,
+    status_code: 400,
+    status_text: "Bad Request",
+    content_type: "text/plain; charset=utf-8",
+  }
 }
 
 ///|
-fn raw_server_error(msg : String, status_code : Int) -> RawResponse {
-  { data: msg, status_code, content_type: "text/plain; charset=utf-8" }
+fn raw_server_error(msg : String, status_code : HttpErrorCode) -> RawResponse {
+  {
+    data: msg,
+    status_code: status_code.as_int(),
+    status_text: http_status_text(status_code),
+    content_type: "text/plain; charset=utf-8",
+  }
 }
 
 ///|

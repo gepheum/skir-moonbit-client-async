@@ -31,7 +31,7 @@ async fn main {
   let service = match
     @client_async.Service::new(
       [get_user, add_user],
-      keep_unrecognized_values=true,
+      unrecognized_values=@client.UnrecognizedValues::Keep,
     ) {
     Ok(service) => service
     Err(_) => panic()
@@ -45,7 +45,7 @@ async fn main {
       _ => body.read_all().text()
     }
     let response = service.handle_request(body_text, ())
-    conn.send_response(response.status_code, "OK", extra_headers={
+    conn.send_response(response.status_code, response.status_text, extra_headers={
       "Content-Type": response.content_type,
     })
     conn.write_string(response.data)
