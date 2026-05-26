@@ -23,6 +23,22 @@ jobs:
       - name: Show toolchain version
         run: moon version
 
+      - name: Bootstrap dependencies for CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .mooncakes/gepheum .mooncakes/moonbitlang
+
+          # `gepheum/skir-client` is not always available in the registry yet.
+          if [ ! -d .mooncakes/gepheum/skir-client ]; then
+            git clone --depth 1 https://github.com/gepheum/skir-moonbit-client .mooncakes/gepheum/skir-client
+          fi
+
+          # Keep async available even if registry resolution is flaky.
+          if [ ! -d .mooncakes/moonbitlang/async ]; then
+            git clone --depth 1 https://github.com/moonbitlang/async .mooncakes/moonbitlang/async
+          fi
+
       - name: Check formatting
         run: moon fmt --check
 
