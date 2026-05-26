@@ -26,6 +26,8 @@ jobs:
       - name: Check formatting
         run: moon fmt --check
 
+      - run: moon update
+
       - name: Typecheck
         run: moon check
 
