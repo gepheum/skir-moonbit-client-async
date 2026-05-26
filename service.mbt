@@ -266,7 +266,10 @@ pub fn[Req, Resp, Meta] MethodEntry::new(
 ///   endpoint (default: Skir CDN standalone URL).
 ///
 /// Example from e2e:
-/// `@client_async.Service::new([get_user, add_user], unrecognized_values=@client.UnrecognizedValues::Keep)`
+/// `@client_async.Service::new(`
+/// `  [get_user, add_user],`
+/// `  unrecognized_values=@client.UnrecognizedValues::Keep,`
+/// `)`
 pub fn[Meta] Service::new(
   methods : Array[MethodEntry[Meta]],
   unrecognized_values? : @client.UnrecognizedValues = @client.UnrecognizedValues::Drop,
