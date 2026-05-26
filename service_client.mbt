@@ -17,7 +17,7 @@ pub fn ServiceClient::new(
 ) -> ServiceClient {
   let default_headers = default_headers.copy()
   let service_url = match service_url.find("?") {
-    Some(i) => service_url[:i]
+    Some(i) => service_url[:i].to_owned()
     None => service_url
   }
   { service_url, default_headers }

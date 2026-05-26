@@ -28,7 +28,11 @@ async fn main {
     },
   )
 
-  let service = match @client_async.Service::new([get_user, add_user]) {
+  let service = match
+    @client_async.Service::new(
+      [get_user, add_user],
+      keep_unrecognized_values=true,
+    ) {
     Ok(service) => service
     Err(_) => panic()
   }

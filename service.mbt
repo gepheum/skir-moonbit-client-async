@@ -222,7 +222,7 @@ pub fn[Meta] Service::new(
       info.error_message,
     )
   },
-  studio_app_js_url? : String = DEFAULT_STUDIO_APP_JS_URL,
+  studio_app_js_url? : String = "https://cdn.jsdelivr.net/npm/skir-studio/dist/skir-studio-standalone.js",
 ) -> Result[Service[Meta], String] {
   let by_num = @hashmap.HashMap([], capacity=methods.length())
   let by_name = @hashmap.HashMap([], capacity=methods.length())
@@ -587,6 +587,3 @@ fn http_status_text(code : StatusCode) -> String {
     Code_511_NetworkAuthenticationRequired => "Network Authentication Required"
   }
 }
-
-///|
-const DEFAULT_STUDIO_APP_JS_URL : String = "https://cdn.jsdelivr.net/npm/skir-studio/dist/skir-studio-standalone.js"
