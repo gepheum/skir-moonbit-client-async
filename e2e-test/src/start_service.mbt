@@ -37,7 +37,7 @@ async fn main {
   println("Listening on http://localhost:8787/myapi")
   server.run_forever() <| ((request, body, conn) => {
     let body_text = match request.meth {
-      Get => extract_query_body(request.path)
+      Get => @client_async.get_percent_decoded_query_from_url(request.path)
       _ => body.read_all().text()
     }
     let response = service.handle_request(body_text, ())
@@ -46,58 +46,4 @@ async fn main {
     })
     conn.write_string(response.data)
   })
-}
-
-///|
-fn extract_query_body(path : String) -> String {
-  let i = match path.find("?") {
-    Some(v) => v
-    None => return ""
-  }
-  let raw = path[i + 1:]
-  percent_decode(raw)
-}
-
-///|
-fn percent_decode(input : StringView) -> String {
-  let bytes = @utf8.encode(input.to_owned())
-  let out : Array[Byte] = []
-  let mut i = 0
-  while i < bytes.length() {
-    let c = bytes[i]
-    if c == b'+' {
-      out.push(b' ')
-      i = i + 1
-    } else if c == b'%' && i + 2 < bytes.length() {
-      match (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
-        (Some(hi), Some(lo)) => {
-          out.push((hi * 16 + lo).to_byte())
-          i = i + 3
-        }
-        _ => {
-          out.push(c)
-          i = i + 1
-        }
-      }
-    } else {
-      out.push(c)
-      i = i + 1
-    }
-  }
-  @utf8.decode(Bytes::from_array(out)[:]) catch {
-    _ => input.to_owned()
-  }
-}
-
-///|
-fn hex_value(b : Byte) -> Int? {
-  if b >= b'0' && b <= b'9' {
-    Some((b - b'0').to_int())
-  } else if b >= b'a' && b <= b'f' {
-    Some(10 + (b - b'a').to_int())
-  } else if b >= b'A' && b <= b'F' {
-    Some(10 + (b - b'A').to_int())
-  } else {
-    None
-  }
 }
