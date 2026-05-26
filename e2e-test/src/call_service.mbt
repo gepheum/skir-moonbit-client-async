@@ -1,11 +1,7 @@
 ///|
 /// Calls the RPC service and prints the round-trip result.
 async test "call service" {
-  let client = match
-    @client_async.ServiceClient::new("http://localhost:8787/myapi") {
-    Ok(value) => value
-    Err(_) => panic()
-  }
+  let client = @client_async.ServiceClient::new("http://localhost:8787/myapi")
 
   let tarzan = @skirout_user_skir.tarzan_const
   let add_req = @skirout_service_skir.AddUserRequest::new(user=tarzan)

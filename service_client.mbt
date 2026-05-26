@@ -6,29 +6,21 @@ pub(all) struct RpcError {
 
 ///|
 pub struct ServiceClient {
-  service_url : String
-  default_headers : @hashmap.HashMap[String, String]
+  priv service_url : String
+  priv default_headers : @hashmap.HashMap[String, String]
 }
 
 ///|
 pub fn ServiceClient::new(
   service_url : String,
-) -> Result[ServiceClient, String] {
-  if service_url.contains("?") {
-    return Err("service URL must not contain a query string")
-  }
-  Ok({ service_url, default_headers: @hashmap.HashMap([], capacity=8) })
-}
-
-///|
-pub fn ServiceClient::with_default_header(
-  self : ServiceClient,
-  key : String,
-  value : String,
+  default_headers? : @hashmap.HashMap[String, String] = @hashmap.HashMap([]),
 ) -> ServiceClient {
-  let next = self
-  next.default_headers.set(key, value)
-  next
+  let default_headers = default_headers.copy()
+  let service_url = match service_url.find("?") {
+    Some(i) => service_url[:i]
+    None => service_url
+  }
+  { service_url, default_headers }
 }
 
 ///|
