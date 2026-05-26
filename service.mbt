@@ -6,52 +6,95 @@ pub(all) struct RawResponse {
 }
 
 ///|
-fn raw_ok_json(data : String) -> RawResponse {
-  { data, status_code: 200, content_type: "application/json" }
-}
-
-///|
-fn raw_ok_html(data : String) -> RawResponse {
-  { data, status_code: 200, content_type: "text/html; charset=utf-8" }
-}
-
-///|
-fn raw_bad_request(msg : String) -> RawResponse {
-  { data: msg, status_code: 400, content_type: "text/plain; charset=utf-8" }
-}
-
-///|
-fn raw_server_error(msg : String, status_code : Int) -> RawResponse {
-  { data: msg, status_code, content_type: "text/plain; charset=utf-8" }
-}
-
-///|
 pub(all) enum HttpErrorCode {
-  BadRequest
-  Unauthorized
-  Forbidden
-  NotFound
-  Conflict
-  UnprocessableContent
-  TooManyRequests
-  InternalServerError
-  BadGateway
-  ServiceUnavailable
+  Code_400_BadRequest
+  Code_401_Unauthorized
+  Code_402_PaymentRequired
+  Code_403_Forbidden
+  Code_404_NotFound
+  Code_405_MethodNotAllowed
+  Code_406_NotAcceptable
+  Code_407_ProxyAuthenticationRequired
+  Code_408_RequestTimeout
+  Code_409_Conflict
+  Code_410_Gone
+  Code_411_LengthRequired
+  Code_412_PreconditionFailed
+  Code_413_ContentTooLarge
+  Code_414_UriTooLong
+  Code_415_UnsupportedMediaType
+  Code_416_RangeNotSatisfiable
+  Code_417_ExpectationFailed
+  Code_418_ImATeapot
+  Code_421_MisdirectedRequest
+  Code_422_UnprocessableContent
+  Code_423_Locked
+  Code_424_FailedDependency
+  Code_425_TooEarly
+  Code_426_UpgradeRequired
+  Code_428_PreconditionRequired
+  Code_429_TooManyRequests
+  Code_431_RequestHeaderFieldsTooLarge
+  Code_451_UnavailableForLegalReasons
+  Code_500_InternalServerError
+  Code_501_NotImplemented
+  Code_502_BadGateway
+  Code_503_ServiceUnavailable
+  Code_504_GatewayTimeout
+  Code_505_HttpVersionNotSupported
+  Code_506_VariantAlsoNegotiates
+  Code_507_InsufficientStorage
+  Code_508_LoopDetected
+  Code_510_NotExtended
+  Code_511_NetworkAuthenticationRequired
 } derive(Eq, Hash, Debug)
+
+///|
+pub type StatusCode = HttpErrorCode
 
 ///|
 pub fn HttpErrorCode::as_int(self : HttpErrorCode) -> Int {
   match self {
-    BadRequest => 400
-    Unauthorized => 401
-    Forbidden => 403
-    NotFound => 404
-    Conflict => 409
-    UnprocessableContent => 422
-    TooManyRequests => 429
-    InternalServerError => 500
-    BadGateway => 502
-    ServiceUnavailable => 503
+    Code_400_BadRequest => 400
+    Code_401_Unauthorized => 401
+    Code_402_PaymentRequired => 402
+    Code_403_Forbidden => 403
+    Code_404_NotFound => 404
+    Code_405_MethodNotAllowed => 405
+    Code_406_NotAcceptable => 406
+    Code_407_ProxyAuthenticationRequired => 407
+    Code_408_RequestTimeout => 408
+    Code_409_Conflict => 409
+    Code_410_Gone => 410
+    Code_411_LengthRequired => 411
+    Code_412_PreconditionFailed => 412
+    Code_413_ContentTooLarge => 413
+    Code_414_UriTooLong => 414
+    Code_415_UnsupportedMediaType => 415
+    Code_416_RangeNotSatisfiable => 416
+    Code_417_ExpectationFailed => 417
+    Code_418_ImATeapot => 418
+    Code_421_MisdirectedRequest => 421
+    Code_422_UnprocessableContent => 422
+    Code_423_Locked => 423
+    Code_424_FailedDependency => 424
+    Code_425_TooEarly => 425
+    Code_426_UpgradeRequired => 426
+    Code_428_PreconditionRequired => 428
+    Code_429_TooManyRequests => 429
+    Code_431_RequestHeaderFieldsTooLarge => 431
+    Code_451_UnavailableForLegalReasons => 451
+    Code_500_InternalServerError => 500
+    Code_501_NotImplemented => 501
+    Code_502_BadGateway => 502
+    Code_503_ServiceUnavailable => 503
+    Code_504_GatewayTimeout => 504
+    Code_505_HttpVersionNotSupported => 505
+    Code_506_VariantAlsoNegotiates => 506
+    Code_507_InsufficientStorage => 507
+    Code_508_LoopDetected => 508
+    Code_510_NotExtended => 510
+    Code_511_NetworkAuthenticationRequired => 511
   }
 }
 
@@ -78,22 +121,6 @@ pub(all) struct MethodErrorInfo[Meta] {
 }
 
 ///|
-enum MethodInvocationError {
-  Service(ServiceError)
-  Unknown(String)
-}
-
-///|
-struct MethodEntry[Meta] {
-  name : String
-  number : Int
-  doc : String
-  request_type_descriptor_json : Json
-  response_type_descriptor_json : Json
-  invoke : (String, Bool, Bool, Meta) -> Result[String, MethodInvocationError]
-}
-
-///|
 pub struct Service[Meta] {
   keep_unrecognized_values : Bool
   can_send_unknown_error_message : (MethodErrorInfo[Meta]) -> Bool
@@ -104,7 +131,7 @@ pub struct Service[Meta] {
 }
 
 ///|
-pub fn[Meta] Service::handle_request(
+pub async fn[Meta] Service::handle_request(
   self : Service[Meta],
   body : String,
   meta : Meta,
@@ -122,200 +149,6 @@ pub fn[Meta] Service::handle_request(
     self.handle_json_request(body, meta)
   } else {
     self.handle_colon_request(body, meta)
-  }
-}
-
-///|
-fn[Meta] Service::serve_list(self : Service[Meta]) -> RawResponse {
-  let methods : Array[Json] = []
-  for _, entry in self.by_num {
-    let fields : Array[(String, Json)] = [
-      ("method", entry.name.to_json()),
-      ("number", entry.number.to_json()),
-      ("request", entry.request_type_descriptor_json),
-      ("response", entry.response_type_descriptor_json),
-    ]
-    if entry.doc != "" {
-      fields.push(("doc", entry.doc.to_json()))
-    }
-    methods.push(Json::object(Map(fields)))
-  }
-  raw_ok_json(
-    Json::object(Map([("methods", methods.to_json())])).stringify(indent=2),
-  )
-}
-
-///|
-fn[Meta] Service::handle_json_request(
-  self : Service[Meta],
-  body : String,
-  meta : Meta,
-) -> RawResponse {
-  let root = @json.parse(body) catch {
-    _ => return raw_bad_request("bad request: invalid JSON")
-  }
-
-  let obj = match root {
-    Json::Object(v) => v
-    _ => return raw_bad_request("bad request: expected JSON object")
-  }
-
-  let entry = match obj.get("method") {
-    Some(Json::Number(n, ..)) => {
-      let number = n.to_int()
-      match self.by_num.get(number) {
-        Some(e) => e
-        None =>
-          return raw_bad_request(
-            "bad request: method not found: " + number.to_string(),
-          )
-      }
-    }
-    Some(Json::String(name)) =>
-      match self.by_name.get(name) {
-        Some(number) =>
-          match self.by_num.get(number) {
-            Some(e) => e
-            None =>
-              return raw_bad_request("bad request: method index out of sync")
-          }
-        None => return raw_bad_request("bad request: method not found: " + name)
-      }
-    Some(_) =>
-      return raw_bad_request(
-        "bad request: 'method' field must be a string or integer",
-      )
-    None =>
-      return raw_bad_request("bad request: missing 'method' field in JSON")
-  }
-
-  let request_val = match obj.get("request") {
-    Some(v) => v
-    None =>
-      return raw_bad_request("bad request: missing 'request' field in JSON")
-  }
-
-  self.invoke_entry(
-    entry,
-    request_val.stringify(),
-    self.keep_unrecognized_values,
-    true,
-    meta,
-  )
-}
-
-///|
-fn[Meta] Service::handle_colon_request(
-  self : Service[Meta],
-  body : String,
-  meta : Meta,
-) -> RawResponse {
-  let chunks = body.split(":").collect()
-  if chunks.length() < 4 {
-    return raw_bad_request("bad request: invalid request format")
-  }
-
-  let name_str = chunks[0].to_owned()
-  let number_str = chunks[1].to_owned()
-  let format = chunks[2].to_owned()
-
-  let request_builder = StringBuilder::new()
-  for i in 3..<chunks.length() {
-    if i > 3 {
-      request_builder.write_char(':')
-    }
-    request_builder.write_string(chunks[i].to_owned())
-  }
-  let request_json = if request_builder.is_empty() {
-    "{}"
-  } else {
-    request_builder.to_string()
-  }
-
-  let entry = if number_str == "" {
-    match self.by_name.get(name_str) {
-      Some(number) =>
-        match self.by_num.get(number) {
-          Some(e) => e
-          None =>
-            return raw_bad_request("bad request: method index out of sync")
-        }
-      None =>
-        return raw_bad_request("bad request: method not found: " + name_str)
-    }
-  } else {
-    let number = @string.parse_int(number_str) catch {
-      _ => return raw_bad_request("bad request: can't parse method number")
-    }
-    match self.by_num.get(number) {
-      Some(e) => e
-      None =>
-        return raw_bad_request(
-          "bad request: method not found: " +
-          name_str +
-          "; number: " +
-          number.to_string(),
-        )
-    }
-  }
-
-  let readable = format == "readable"
-  self.invoke_entry(
-    entry,
-    request_json,
-    self.keep_unrecognized_values,
-    readable,
-    meta,
-  )
-}
-
-///|
-fn[Meta] Service::invoke_entry(
-  self : Service[Meta],
-  entry : MethodEntry[Meta],
-  request_json : String,
-  keep_unrecognized : Bool,
-  readable : Bool,
-  meta : Meta,
-) -> RawResponse {
-  let raw_request = request_json
-  match (entry.invoke)(request_json, keep_unrecognized, readable, meta) {
-    Ok(response_json) => raw_ok_json(response_json)
-    Err(err) =>
-      match err {
-        Service(service_error) => {
-          let status_code = service_error.status_code.as_int()
-          let msg = if service_error.message == "" {
-            http_status_text(status_code)
-          } else {
-            service_error.message
-          }
-          let info : MethodErrorInfo[Meta] = {
-            error_message: msg,
-            method_name: entry.name,
-            raw_request,
-            request_meta: meta,
-          }
-          (self.error_logger)(info)
-          raw_server_error(msg, status_code)
-        }
-        Unknown(message) => {
-          let info : MethodErrorInfo[Meta] = {
-            error_message: message,
-            method_name: entry.name,
-            raw_request,
-            request_meta: meta,
-          }
-          let can_send = (self.can_send_unknown_error_message)(info)
-          (self.error_logger)(info)
-          let msg = if can_send {
-            "server error: " + message
-          } else {
-            "server error"
-          }
-          raw_server_error(msg, 500)
-        }
-      }
   }
 }
 
@@ -352,7 +185,7 @@ pub fn[Meta] ServiceBuilder::new() -> ServiceBuilder[Meta] {
 pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
   self : ServiceBuilder[Meta],
   rpc_method : @client.Method[Req, Resp],
-  impl_fn : (Req, Meta) -> Result[Resp, ServiceError],
+  impl_fn : async (Req, Meta) -> Result[Resp, ServiceError],
 ) -> Result[ServiceBuilder[Meta], String] {
   if self.by_num.contains(rpc_method.number) {
     return Err(
@@ -388,7 +221,7 @@ pub fn[Req, Resp, Meta] ServiceBuilder::add_method(
           return Err(
             Service(
               ServiceError::new(
-                HttpErrorCode::BadRequest,
+                HttpErrorCode::Code_400_BadRequest,
                 "bad request: can't parse JSON: " + e,
               ),
             ),
@@ -470,6 +303,239 @@ pub fn[Meta] ServiceBuilder::build(
 }
 
 ///|
+enum MethodInvocationError {
+  Service(ServiceError)
+  Unknown(String)
+}
+
+///|
+struct MethodEntry[Meta] {
+  name : String
+  number : Int
+  doc : String
+  request_type_descriptor_json : Json
+  response_type_descriptor_json : Json
+  invoke : async (String, Bool, Bool, Meta) -> Result[
+    String,
+    MethodInvocationError,
+  ]
+}
+
+///|
+fn[Meta] Service::serve_list(self : Service[Meta]) -> RawResponse {
+  let methods : Array[Json] = []
+  for _, entry in self.by_num {
+    let fields : Array[(String, Json)] = [
+      ("method", entry.name.to_json()),
+      ("number", entry.number.to_json()),
+      ("request", entry.request_type_descriptor_json),
+      ("response", entry.response_type_descriptor_json),
+    ]
+    if entry.doc != "" {
+      fields.push(("doc", entry.doc.to_json()))
+    }
+    methods.push(Json::object(Map(fields)))
+  }
+  raw_ok_json(
+    Json::object(Map([("methods", methods.to_json())])).stringify(indent=2),
+  )
+}
+
+///|
+async fn[Meta] Service::handle_json_request(
+  self : Service[Meta],
+  body : String,
+  meta : Meta,
+) -> RawResponse {
+  let root = @json.parse(body) catch {
+    _ => return raw_bad_request("bad request: invalid JSON")
+  }
+
+  let obj = match root {
+    Json::Object(v) => v
+    _ => return raw_bad_request("bad request: expected JSON object")
+  }
+
+  let entry = match obj.get("method") {
+    Some(Json::Number(n, ..)) => {
+      let number = n.to_int()
+      match self.by_num.get(number) {
+        Some(e) => e
+        None =>
+          return raw_bad_request(
+            "bad request: method not found: " + number.to_string(),
+          )
+      }
+    }
+    Some(Json::String(name)) =>
+      match self.by_name.get(name) {
+        Some(number) =>
+          match self.by_num.get(number) {
+            Some(e) => e
+            None =>
+              return raw_bad_request("bad request: method index out of sync")
+          }
+        None => return raw_bad_request("bad request: method not found: " + name)
+      }
+    Some(_) =>
+      return raw_bad_request(
+        "bad request: 'method' field must be a string or integer",
+      )
+    None =>
+      return raw_bad_request("bad request: missing 'method' field in JSON")
+  }
+
+  let request_val = match obj.get("request") {
+    Some(v) => v
+    None =>
+      return raw_bad_request("bad request: missing 'request' field in JSON")
+  }
+
+  self.invoke_entry(
+    entry,
+    request_val.stringify(),
+    self.keep_unrecognized_values,
+    true,
+    meta,
+  )
+}
+
+///|
+async fn[Meta] Service::handle_colon_request(
+  self : Service[Meta],
+  body : String,
+  meta : Meta,
+) -> RawResponse {
+  let chunks = body.split(":").collect()
+  if chunks.length() < 4 {
+    return raw_bad_request("bad request: invalid request format")
+  }
+
+  let name_str = chunks[0].to_owned()
+  let number_str = chunks[1].to_owned()
+  let format = chunks[2].to_owned()
+
+  let request_builder = StringBuilder::new()
+  for i in 3..<chunks.length() {
+    if i > 3 {
+      request_builder.write_char(':')
+    }
+    request_builder.write_string(chunks[i].to_owned())
+  }
+  let request_json = if request_builder.is_empty() {
+    "{}"
+  } else {
+    request_builder.to_string()
+  }
+
+  let entry = if number_str == "" {
+    match self.by_name.get(name_str) {
+      Some(number) =>
+        match self.by_num.get(number) {
+          Some(e) => e
+          None =>
+            return raw_bad_request("bad request: method index out of sync")
+        }
+      None =>
+        return raw_bad_request("bad request: method not found: " + name_str)
+    }
+  } else {
+    let number = @string.parse_int(number_str) catch {
+      _ => return raw_bad_request("bad request: can't parse method number")
+    }
+    match self.by_num.get(number) {
+      Some(e) => e
+      None =>
+        return raw_bad_request(
+          "bad request: method not found: " +
+          name_str +
+          "; number: " +
+          number.to_string(),
+        )
+    }
+  }
+
+  let readable = format == "readable"
+  self.invoke_entry(
+    entry,
+    request_json,
+    self.keep_unrecognized_values,
+    readable,
+    meta,
+  )
+}
+
+///|
+async fn[Meta] Service::invoke_entry(
+  self : Service[Meta],
+  entry : MethodEntry[Meta],
+  request_json : String,
+  keep_unrecognized : Bool,
+  readable : Bool,
+  meta : Meta,
+) -> RawResponse {
+  let raw_request = request_json
+  match (entry.invoke)(request_json, keep_unrecognized, readable, meta) {
+    Ok(response_json) => raw_ok_json(response_json)
+    Err(err) =>
+      match err {
+        Service(service_error) => {
+          let status_code = service_error.status_code.as_int()
+          let msg = if service_error.message == "" {
+            http_status_text(service_error.status_code)
+          } else {
+            service_error.message
+          }
+          let info : MethodErrorInfo[Meta] = {
+            error_message: msg,
+            method_name: entry.name,
+            raw_request,
+            request_meta: meta,
+          }
+          (self.error_logger)(info)
+          raw_server_error(msg, status_code)
+        }
+        Unknown(message) => {
+          let info : MethodErrorInfo[Meta] = {
+            error_message: message,
+            method_name: entry.name,
+            raw_request,
+            request_meta: meta,
+          }
+          let can_send = (self.can_send_unknown_error_message)(info)
+          (self.error_logger)(info)
+          let msg = if can_send {
+            "server error: " + message
+          } else {
+            "server error"
+          }
+          raw_server_error(msg, 500)
+        }
+      }
+  }
+}
+
+///|
+fn raw_ok_json(data : String) -> RawResponse {
+  { data, status_code: 200, content_type: "application/json" }
+}
+
+///|
+fn raw_ok_html(data : String) -> RawResponse {
+  { data, status_code: 200, content_type: "text/html; charset=utf-8" }
+}
+
+///|
+fn raw_bad_request(msg : String) -> RawResponse {
+  { data: msg, status_code: 400, content_type: "text/plain; charset=utf-8" }
+}
+
+///|
+fn raw_server_error(msg : String, status_code : Int) -> RawResponse {
+  { data: msg, status_code, content_type: "text/plain; charset=utf-8" }
+}
+
+///|
 fn serve_studio(js_url : String) -> RawResponse {
   raw_ok_html(studio_html(js_url))
 }
@@ -495,20 +561,48 @@ fn html_escape_attr(s : String) -> String {
 }
 
 ///|
-fn http_status_text(code : Int) -> String {
+fn http_status_text(code : StatusCode) -> String {
   match code {
-    200 => "OK"
-    400 => "Bad Request"
-    401 => "Unauthorized"
-    403 => "Forbidden"
-    404 => "Not Found"
-    409 => "Conflict"
-    422 => "Unprocessable Entity"
-    429 => "Too Many Requests"
-    500 => "Internal Server Error"
-    502 => "Bad Gateway"
-    503 => "Service Unavailable"
-    _ => "Error"
+    Code_400_BadRequest => "Bad Request"
+    Code_401_Unauthorized => "Unauthorized"
+    Code_402_PaymentRequired => "Payment Required"
+    Code_403_Forbidden => "Forbidden"
+    Code_404_NotFound => "Not Found"
+    Code_405_MethodNotAllowed => "Method Not Allowed"
+    Code_406_NotAcceptable => "Not Acceptable"
+    Code_407_ProxyAuthenticationRequired => "Proxy Authentication Required"
+    Code_408_RequestTimeout => "Request Timeout"
+    Code_409_Conflict => "Conflict"
+    Code_410_Gone => "Gone"
+    Code_411_LengthRequired => "Length Required"
+    Code_412_PreconditionFailed => "Precondition Failed"
+    Code_413_ContentTooLarge => "Content Too Large"
+    Code_414_UriTooLong => "URI Too Long"
+    Code_415_UnsupportedMediaType => "Unsupported Media Type"
+    Code_416_RangeNotSatisfiable => "Range Not Satisfiable"
+    Code_417_ExpectationFailed => "Expectation Failed"
+    Code_418_ImATeapot => "I'm a Teapot"
+    Code_421_MisdirectedRequest => "Misdirected Request"
+    Code_422_UnprocessableContent => "Unprocessable Content"
+    Code_423_Locked => "Locked"
+    Code_424_FailedDependency => "Failed Dependency"
+    Code_425_TooEarly => "Too Early"
+    Code_426_UpgradeRequired => "Upgrade Required"
+    Code_428_PreconditionRequired => "Precondition Required"
+    Code_429_TooManyRequests => "Too Many Requests"
+    Code_431_RequestHeaderFieldsTooLarge => "Request Header Fields Too Large"
+    Code_451_UnavailableForLegalReasons => "Unavailable For Legal Reasons"
+    Code_500_InternalServerError => "Internal Server Error"
+    Code_501_NotImplemented => "Not Implemented"
+    Code_502_BadGateway => "Bad Gateway"
+    Code_503_ServiceUnavailable => "Service Unavailable"
+    Code_504_GatewayTimeout => "Gateway Timeout"
+    Code_505_HttpVersionNotSupported => "HTTP Version Not Supported"
+    Code_506_VariantAlsoNegotiates => "Variant Also Negotiates"
+    Code_507_InsufficientStorage => "Insufficient Storage"
+    Code_508_LoopDetected => "Loop Detected"
+    Code_510_NotExtended => "Not Extended"
+    Code_511_NetworkAuthenticationRequired => "Network Authentication Required"
   }
 }
 

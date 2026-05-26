@@ -20,7 +20,7 @@ async fn main {
       if req.user.user_id == 0 {
         Err(
           @client_async.ServiceError::new(
-            @client_async.HttpErrorCode::BadRequest,
+            @client_async.HttpErrorCode::Code_400_BadRequest,
             "user_id must be non-zero",
           ),
         )
