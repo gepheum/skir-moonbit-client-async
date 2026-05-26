@@ -1,0 +1,6 @@
+_build/
+.mooncakes/
+node_modules/
+e2e-test/_build/
+e2e-test/skirout/
+.DS_Store

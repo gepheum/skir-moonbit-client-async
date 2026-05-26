@@ -1,0 +1,4 @@
+generators:
+  - mod: skir-moonbit-gen
+    outDir: ./skirout
+    config: {}
